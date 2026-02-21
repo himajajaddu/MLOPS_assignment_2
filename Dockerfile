@@ -1,0 +1,16 @@
+# M2: Containerization
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install dependencies with version pinning via requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code into container
+COPY . .
+
+EXPOSE 8000
+
+# Run the FastAPI app with Uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
