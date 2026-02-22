@@ -1,0 +1,58 @@
+{
+  "base_url": "http://localhost:8000",
+  "test_dir": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test",
+  "sample_n": 50,
+  "accuracy": 0.6,
+  "examples": [
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Dog/8942.jpg",
+      "true": "Dog",
+      "pred": "Cat"
+    },
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Dog/9827.jpg",
+      "true": "Dog",
+      "pred": "Dog"
+    },
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Dog/9040.jpg",
+      "true": "Dog",
+      "pred": "Dog"
+    },
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Dog/6215.jpg",
+      "true": "Dog",
+      "pred": "Dog"
+    },
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Cat/959.jpg",
+      "true": "Cat",
+      "pred": "Dog"
+    },
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Dog/7986.jpg",
+      "true": "Dog",
+      "pred": "Dog"
+    },
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Cat/7936.jpg",
+      "true": "Cat",
+      "pred": "Dog"
+    },
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Cat/10325.jpg",
+      "true": "Cat",
+      "pred": "Dog"
+    },
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Dog/8910.jpg",
+      "true": "Dog",
+      "pred": "Dog"
+    },
+    {
+      "image": "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test/Cat/8135.jpg",
+      "true": "Cat",
+      "pred": "Dog"
+    }
+  ]
+}

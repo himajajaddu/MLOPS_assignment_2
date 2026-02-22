@@ -6,16 +6,18 @@ from pathlib import Path
 import requests
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
-TEST_DIR = Path(os.getenv("TEST_DIR", "data/splits/test"))  # expects test/Cat and test/Dog
+TEST_DIR = Path(os.getenv("TEST_DIR", "/Users/apple/Documents/MLOPS_assignment_2/data/splits/test"))  # expects test/Cat and test/Dog
 SAMPLE_N = int(os.getenv("SAMPLE_N", "50"))
 
 def collect_images():
     items = []
     for cls in ["Cat", "Dog"]:
         folder = TEST_DIR / cls
+        print(f"Collecting from {folder}...")
         for p in folder.glob("*"):
             if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
                 items.append((p, cls))
+                print(f"  Found: {p} -> {cls}")
     random.shuffle(items)
     return items[:SAMPLE_N]
 
@@ -28,6 +30,7 @@ def predict_api(img_path: Path):
 
 def main():
     data = collect_images()
+    print(data[:5])  # Show some samples
     if not data:
         raise RuntimeError(f"No test images found at {TEST_DIR}")
 
