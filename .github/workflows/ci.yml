@@ -29,7 +29,8 @@ jobs:
           pip install pytest
 
       - name: Run unit tests
-        run: pytest -q
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -39,15 +40,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Docker image
-        run: |
-          IMAGE=ghcr.io/himajajaddu/mlops_assignment_2/cats-dogs-api:latest
-          docker build -t $IMAGE .
-
-      - name: Push Docker image
-        run: |
-          IMAGE=ghcr.io/himajajaddu/mlops_assignment_2/cats-dogs-api:latest
-          docker push $IMAGE
-            - name: Build Docker image
         run: |
           IMAGE=ghcr.io/himajajaddu/mlops_assignment_2:latest
           docker build -t $IMAGE .
