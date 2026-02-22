@@ -10,6 +10,7 @@ RUN python -m pip install --upgrade pip && \
 
 # Copy source code into container
 COPY . .
+COPY models/ ./models/
 
 EXPOSE 8000
 

@@ -83,7 +83,7 @@ This will:
 ### 5) View MLflow UI
 
 ```bash
-mlflow ui --backend-store-uri sqlite:///mlflow.db
+mlflow ui --backend-store-uri file:./mlruns
 ```
 
 Open: http://127.0.0.1:5000
