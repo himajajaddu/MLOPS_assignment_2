@@ -47,3 +47,12 @@ jobs:
         run: |
           IMAGE=ghcr.io/himajajaddu/mlops_assignment_2/cats-dogs-api:latest
           docker push $IMAGE
+            - name: Build Docker image
+        run: |
+          IMAGE=ghcr.io/himajajaddu/mlops_assignment_2:latest
+          docker build -t $IMAGE .
+
+      - name: Push Docker image
+        run: |
+          IMAGE=ghcr.io/himajajaddu/mlops_assignment_2:latest
+          docker push $IMAGE
