@@ -1,177 +1,312 @@
-# MLOps Assignment 2: End-to-End MLOps Pipeline (Cats vs Dogs)
+# 🐱🐶 MLOps Pipeline: Cats vs Dogs Image Classification
 
-This project implements an end-to-end MLOps workflow for **Cats vs Dogs** image classification:
-
-- **M1**: Real model training + MLflow experiment tracking
-- **M2**: FastAPI inference service (loads the trained model and predicts from an uploaded image)
-- **M3**: Automated tests with Pytest
-- **M4**: Containerization + Docker Compose deployment
-- **M5**: Basic monitoring (Prometheus metrics) + logging
+An end-to-end **MLOps pipeline** for binary image classification (Cats vs Dogs) designed for a pet adoption platform. The project demonstrates model training, experiment tracking, data versioning, containerization, CI/CD automation, deployment, and monitoring.
 
 ---
 
-## Folder Structure (important)
+## 📌 Project Objective
 
-- `data/raw/` → raw Kaggle download/extract (DO NOT commit large files)
-- `data/processed/` → ImageFolder structured dataset (optional helper script)
-- `models/` → trained model artifact saved as `cats_dogs_model.pt`
-- `src/train.py` → real training script
-- `app/main.py` → FastAPI inference service (uses the trained model)
+Build and deploy a reproducible ML system that:
+
+- Trains a CNN model for image classification
+- Tracks experiments & metrics
+- Versions datasets & artifacts
+- Packages model into a REST API
+- Automates build & deployment
+- Monitors predictions & service health
 
 ---
 
-## M1: Data + Training + MLflow
+## 🧩 Dataset
 
-### 1) Put Kaggle dataset in `data/raw/`
+**Source:** Kaggle Cats vs Dogs Dataset  
 
-Use **any** Kaggle Cats vs Dogs dataset, but the code supports these common layouts:
+**Preprocessing:**
 
-**Layout A (already ImageFolder style)**:
+- Resize images to RGB format  
+- Split into Train / Validation / Test  
+- Apply data augmentation for better generalization  
+
+---
+
+## 🏗️ MLOps Architecture
+
+| Module | Purpose | Tools Used |
+|--------|--------|------------|
+| **M1** Model Development & Tracking | Train & track experiments | PyTorch, MLflow |
+| **M2** Packaging & Containerization | REST API service | FastAPI, Docker |
+| **M3** Continuous Integration | Automated testing & build | GitHub Actions, Pytest |
+| **M4** Continuous Deployment | Service deployment | Docker Compose |
+| **M5** Monitoring & Logging | Metrics & logs | Prometheus metrics + logging |
+
+---
+
+## 📁 Project Structure
+
 ```
-data/raw/train/cats/*.jpg
-data/raw/train/dogs/*.jpg
+├── .dvc/                   # Versioning
+├── .github/                # github worflows of CI/CD
+├── app/                    # FastAPI inference service
+├── data/                   # Dataset (DVC tracked)
+├── deployment/             # Docker Compose deployment
+├── models/                 # Saved trained model
+├── reports/                # Plots & evaluation outputs
+├── src/                    # Training & preprocessing code
+├── .github/workflows/      # CI pipeline
+├── Dockerfile              # Container configuration
+├── requirements.txt        # Dependencies
+└── README.md
 ```
 
-**Layout B (Kaggle Dogs vs Cats competition)**:
-```
-data/raw/train/cat.0.jpg, dog.0.jpg, ...
-data/raw/test/...
-```
+---
 
-If your dataset is Layout B, run the converter:
+## ⚙️ Setup Instructions
+
+### 1️⃣ Clone Repository
 
 ```bash
-python -m src.prepare_data --raw_dir data/raw --out_dir data/processed --subset 2500
+git clone https://github.com/himajajaddu/MLOPS_assignment_2.git
+cd MLOPS_assignment_2
 ```
 
-Then you will train from `data/processed/`.
+---
 
-> Tip: start with `--subset 2500` for faster training, then increase later.
-
-### 2) Track data with DVC (optional but recommended)
+### 2️⃣ Create Virtual Environment
 
 ```bash
-dvc init
-dvc add data/raw
-git add data/raw.dvc .gitignore
-git commit -m "Track raw data with DVC"
+python -m venv .venv
+source .venv/bin/activate     # Mac/Linux
+# .venv\Scripts\activate      # Windows
 ```
 
-### 3) Install requirements
+---
+
+### 3️⃣ Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4) Train (REAL training)
+---
 
-If your data is in `data/raw/` (Layout A):
-```bash
-python -m src.train --data_dir data/raw --epochs 3 --img_size 128
-```
+## 📦 Dataset Versioning with DVC
 
-If you used the converter (Layout B → processed):
-```bash
-python -m src.train --data_dir data/processed --epochs 3 --img_size 128
-```
-
-This will:
-- train a small CNN
-- log params/metrics to **MLflow**
-- save the best model to: `models/cats_dogs_model.pt`
-
-### 5) View MLflow UI
+Initialize DVC:
 
 ```bash
-mlflow ui --backend-store-uri file:./mlruns
+dvc init
 ```
 
-Open: http://127.0.0.1:5000
+Track dataset:
+
+```bash
+dvc add data/raw
+git add data/raw.dvc .gitignore
+git commit -m "Track dataset with DVC"
+```
+
+(Optional) Add remote storage:
+
+```bash
+dvc remote add -d storage <REMOTE_URL>
+dvc push
+```
+
+Pull dataset later:
+
+```bash
+dvc pull
+```
+
+View pipeline graph:
+
+```bash
+dvc dag
+```
 
 ---
 
-## M2: FastAPI Inference (uses trained model)
+## 🧠 Model Training & Experiment Tracking
 
-### 1) Run locally
-
-Train first, then:
+Train model:
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -m src.train --data_dir data/raw --epochs 3
 ```
 
-Health check:
+Outputs:
+
+- Saved model → `models/cats_dogs_model.pt`
+- Metrics & logs → MLflow
+
+Start MLflow UI:
+
+```bash
+mlflow ui
+```
+
+Open: http://localhost:5000
+
+---
+
+## 🚀 Running the API Locally
+
+Start FastAPI server:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+### Health Check
+
 ```bash
 curl http://localhost:8000/health
 ```
 
-Predict (upload any jpg/png):
+### Prediction
+
 ```bash
-curl -X POST -F "file=@path/to/sample.jpg" http://localhost:8000/predict
+curl -X POST -F "file=@data/splits/test/Cat/0.jpg" http://localhost:8000/predict 
 ```
 
-### 2) Model path via environment variable (optional)
+### Metrics Endpoint
 
-By default, API loads:
-- `models/cats_dogs_model.pt`
-
-Override:
 ```bash
-MODEL_PATH=models/cats_dogs_model.pt DEVICE=cpu uvicorn app.main:app --reload
+curl http://localhost:8000/metrics
 ```
 
 ---
 
-## M2: Docker build/run
+## 🐳 Docker Containerization
 
-Build:
+### Build Docker Image
+
 ```bash
 docker build -t cats-dogs-classifier:latest .
 ```
 
-Run:
+### Run Container
+
 ```bash
 docker run -p 8000:8000 -e MODEL_PATH=models/cats_dogs_model.pt cats-dogs-classifier:latest
 ```
 
-> NOTE: Your trained model must be inside the image. The simplest approach is: train first, then build the image (so `models/` is included).
-
----
-
-## M3: Tests
+Test:
 
 ```bash
-pytest app/tests/
+curl http://localhost:8000/health
 ```
-
-Tests are designed to pass even if the model is not trained yet (the API returns 503 until model exists).
 
 ---
 
-## M4: Deployment (Docker Compose)
+## 🚢 Deployment with Docker Compose
 
 ```bash
 cd deployment
 docker-compose up -d
 ```
 
----
-
-## M5: Monitoring
-
-Prometheus metrics:
-- http://localhost:8000/metrics
-
-Logs:
-- standard Python logging in `app/main.py`
-
----
-
-## Submission Tip
-
-Zip the project **without large data**:
+Verify:
 
 ```bash
-zip -r mlops_assignment_submission.zip MLOPS_assignment_2/ \
-  -x "*/__pycache__/*" -x "*/data/raw/*" -x "*/data/processed/*"
+curl http://localhost:8000/health
 ```
+
+---
+
+## 🧪 Running Tests
+
+```bash
+pytest
+```
+
+---
+
+## 🔁 CI Pipeline (GitHub Actions)
+
+On every push:
+
+✔ Install dependencies  
+✔ Run tests  
+✔ Build Docker image  
+✔ Verify build success  
+
+View pipeline → GitHub → **Actions tab**
+
+---
+
+## 🔄 CD Deployment Flow
+
+On main branch updates:
+
+✔ Pull latest image  
+✔ Restart service  
+✔ Run health check  
+✔ Fail deployment if service unhealthy  
+
+---
+
+## 📊 Monitoring & Logging
+
+### Logging
+The API logs:
+
+- incoming requests  
+- prediction latency  
+- errors  
+
+### Metrics
+Prometheus metrics available at:
+
+```
+/metrics
+```
+
+Includes:
+
+- request count  
+- response time  
+- error rate  
+
+---
+
+## 🌐 API Endpoints
+
+### ✅ Health Check
+`GET /health`
+
+Response:
+```
+{"status": "ok"}
+```
+
+### ✅ Prediction
+`POST /predict`
+
+Response:
+```
+{
+  "label": "dog",
+  "probability": 0.94
+}
+```
+
+### ✅ Metrics
+`GET /metrics`
+
+Returns service metrics.
+
+---
+
+## 🎥 Demonstration Workflow
+
+This project demonstrates:
+
+1️⃣ Code & data versioning  
+2️⃣ Model training & MLflow tracking  
+3️⃣ Containerized API service  
+4️⃣ CI pipeline automation  
+5️⃣ Deployment & health checks  
+6️⃣ Live prediction & monitoring  
+
+
