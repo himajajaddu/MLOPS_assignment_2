@@ -1,0 +1,94 @@
+name: CD - Local Deploy (Compose) + Smoke Test
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy-and-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create minimal model (for smoke test)
+        run: |
+          mkdir -p models
+          python - <<'PY'
+          import torch
+          import torch.nn as nn
+          from pathlib import Path
+
+          class SmallCNN(nn.Module):
+              def __init__(self, num_classes=2):
+                  super().__init__()
+                  self.features = nn.Sequential(
+                      nn.Conv2d(3, 16, 3, padding=1),
+                      nn.ReLU(inplace=True),
+                      nn.MaxPool2d(2),
+                      nn.Conv2d(16, 32, 3, padding=1),
+                      nn.ReLU(inplace=True),
+                      nn.MaxPool2d(2),
+                      nn.Conv2d(32, 64, 3, padding=1),
+                      nn.ReLU(inplace=True),
+                      nn.AdaptiveAvgPool2d((1, 1)),
+                  )
+                  self.classifier = nn.Linear(64, num_classes)
+              def forward(self, x):
+                  x = self.features(x)
+                  x = x.view(x.size(0), -1)
+                  return self.classifier(x)
+
+          payload = {
+              "state_dict": SmallCNN().state_dict(),
+              "class_names": ["Cat", "Dog"],
+              "img_size": 224,
+              "architecture": "SmallCNN",
+          }
+          Path("models").mkdir(exist_ok=True)
+          torch.save(payload, "models/cats_dogs_model.pt")
+          print("Created models/cats_dogs_model.pt for smoke tests")
+          PY
+
+      - name: Start service with docker compose
+        run: |
+          cd deployment
+          docker compose up -d
+          docker compose ps
+          docker compose logs --no-color --tail=200
+
+      - name: Set up Python for smoke test
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install smoke test dependencies
+        run: |
+          python -m pip install -U pip
+          pip install requests
+
+      - name: Run smoke test (health + predict)
+        run: |
+          BASE_URL=http://localhost:8000 SMOKE_IMAGE=app/tests/assets/sample_cat.jpg python deployment/smoke_test.py
+
+      - name: Print metrics (optional evidence)
+        run: |
+          curl -s http://localhost:8000/metrics | head -n 30
+
+      - name: Shutdown compose
+        if: always()
+        run: |
+          cd deployment
+          docker compose down
