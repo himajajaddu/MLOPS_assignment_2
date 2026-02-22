@@ -72,6 +72,8 @@ jobs:
 
       - name: Start service with docker compose
         run: |
+          export MODEL_DIR="${GITHUB_WORKSPACE}/models"
+          echo "MODEL_DIR=$MODEL_DIR"
           cd deployment
           docker compose up -d
           docker compose ps
