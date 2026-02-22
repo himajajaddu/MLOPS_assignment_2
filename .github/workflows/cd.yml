@@ -1,0 +1,21 @@
+name: CD - Deploy with Docker Compose + Smoke Test
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH Deploy (pull and restart compose)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/cats-dogs-mlops/deployment
+            docker compose pull
+            docker compose up -d
+            python3 smoke_test.py

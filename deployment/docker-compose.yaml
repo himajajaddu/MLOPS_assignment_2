@@ -1,14 +1,10 @@
-version: "3.8"
-
 services:
-  api:
-    build: ..
-    container_name: cats-dogs-api
+  cats_dogs_api:
+    image: ghcr.io/himajajaddu/mlops_assignment_2/cats-dogs-api:latest
     ports:
       - "8000:8000"
     environment:
-      - MODEL_PATH=models/cats_dogs_model.pt
+      - MODEL_PATH=/app/models/cats_dogs_model.pt
       - DEVICE=cpu
     volumes:
-      # Mount trained model from host so you don't have to rebuild the image after training
-      - ../models:/app/models:ro
+      - ../models:/app/models

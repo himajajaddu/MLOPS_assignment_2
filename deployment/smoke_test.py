@@ -1,44 +1,51 @@
-import io
+# deployment/smoke_test.py
+import os
 import sys
 import time
 import requests
-from PIL import Image
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
-def wait_for_health(timeout_s: int = 30) -> dict:
+def wait_for_service(timeout=60):
     start = time.time()
-    while time.time() - start < timeout_s:
+    while time.time() - start < timeout:
         try:
-            r = requests.get(f"{BASE_URL}/health", timeout=3)
+            r = requests.get(f"{BASE_URL}/health", timeout=5)
             if r.status_code == 200:
                 return r.json()
         except Exception:
             pass
-        time.sleep(1)
-    raise RuntimeError("Service did not become healthy in time")
+        time.sleep(2)
+    raise RuntimeError("Service did not become ready in time")
 
 def main():
-    health = wait_for_health()
+    health = wait_for_service()
+    if not health.get("model_loaded"):
+        raise RuntimeError(f"Model not loaded: {health}")
+
+    # Use a small sample image shipped with repo (you should keep 1 tiny image in repo)
+    sample_path = os.getenv("SMOKE_IMAGE", "app/tests/assets/sample_cat.jpg")
+    if not os.path.exists(sample_path):
+        raise FileNotFoundError(f"Smoke image not found: {sample_path}")
+
+    with open(sample_path, "rb") as f:
+        files = {"file": ("sample_cat.jpg", f, "image/jpeg")}
+        r = requests.post(f"{BASE_URL}/predict", files=files, timeout=30)
+
+    if r.status_code != 200:
+        raise RuntimeError(f"/predict failed: {r.status_code}, {r.text}")
+
+    out = r.json()
+    if "prediction" not in out and "predicted_class" not in out:
+        raise RuntimeError(f"Unexpected response: {out}")
+
+    print("✅ Smoke test passed")
     print("Health:", health)
-
-    # Create a tiny valid jpeg
-    img = Image.new("RGB", (64, 64))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG")
-    buf.seek(0)
-
-    files = {"file": ("smoke.jpg", buf.getvalue(), "image/jpeg")}
-    r = requests.post(f"{BASE_URL}/predict", files=files, timeout=30)
-
-    # If the model is not trained/mounted, API returns 503 (acceptable for smoke test if you haven't trained yet)
-    if r.status_code == 503:
-        print("Predict returned 503 (model not loaded). Train the model and retry.")
-        return 0
-
-    r.raise_for_status()
-    print("Predict:", r.json())
-    return 0
+    print("Predict:", out)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        main()
+    except Exception as e:
+        print("❌ Smoke test failed:", e)
+        sys.exit(1)
