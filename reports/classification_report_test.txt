@@ -1,0 +1,19 @@
+Classification Report (Test)
+==============================
+Macro Precision: 0.7058
+Macro Recall:    0.7039
+Macro F1:        0.7032
+
+Cat:
+  Precision: 0.6859
+  Recall:    0.7528
+  F1:        0.7178
+
+Dog:
+  Precision: 0.7258
+  Recall:    0.6549
+  F1:        0.6886
+
+Confusion Matrix (rows=true, cols=pred)
+Cat: [941, 309]
+Dog: [431, 818]

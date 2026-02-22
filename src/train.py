@@ -216,7 +216,51 @@ def evaluate_full(model: nn.Module, loader: DataLoader, device: torch.device) ->
     avg_loss = total_loss / max(total, 1)
     acc = correct / max(total, 1)
     return avg_loss, acc, y_true_all, y_pred_all
+def save_training_curves_png(
+    history: dict,
+    out_dir: Path,
+) -> Tuple[Path, Path]:
+    """
+    Saves:
+      - loss_curve.png  (train_loss vs val_loss)
+      - val_accuracy_curve.png (val_accuracy)
+    Returns paths.
+    """
+    import matplotlib.pyplot as plt
 
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    epochs = history["epoch"]
+    train_losses = history["train_loss"]
+    val_losses = history["val_loss"]
+    val_accs = history["val_accuracy"]
+
+    # 1) Loss curve
+    loss_path = out_dir / "loss_curve.png"
+    fig = plt.figure()
+    plt.plot(epochs, train_losses, label="train_loss")
+    plt.plot(epochs, val_losses, label="val_loss")
+    plt.title("Training vs Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    fig.tight_layout()
+    plt.savefig(loss_path)
+    plt.close(fig)
+
+    # 2) Val accuracy curve
+    acc_path = out_dir / "val_accuracy_curve.png"
+    fig = plt.figure()
+    plt.plot(epochs, val_accs, label="val_accuracy")
+    plt.title("Validation Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    fig.tight_layout()
+    plt.savefig(acc_path)
+    plt.close(fig)
+
+    return loss_path, acc_path
 
 def save_confusion_matrix_png(y_true: List[int], y_pred: List[int], class_names: List[str], out_path: Path) -> None:
     # Pure matplotlib (no seaborn)
@@ -300,6 +344,13 @@ def train(args: argparse.Namespace) -> None:
         })
 
         best_val_acc = 0.0
+        history = {
+            "epoch": [],
+            "train_loss": [],
+            "val_loss": [],
+            "val_accuracy": [],
+            }
+
         for epoch in range(1, args.epochs + 1):
             model.train()
             running_loss = 0.0
@@ -319,6 +370,10 @@ def train(args: argparse.Namespace) -> None:
             train_loss = running_loss / max(seen, 1)
             val_loss, val_acc, _, _ = evaluate_full(model, val_loader, device)
 
+            history["epoch"].append(epoch)
+            history["train_loss"].append(train_loss)
+            history["val_loss"].append(val_loss)
+            history["val_accuracy"].append(val_acc)
             mlflow.log_metric("train_loss", train_loss, step=epoch)
             mlflow.log_metric("val_loss", val_loss, step=epoch)
             mlflow.log_metric("val_accuracy", val_acc, step=epoch)
@@ -335,6 +390,10 @@ def train(args: argparse.Namespace) -> None:
                     "architecture": "SmallCNN",
                 }
                 torch.save(payload, model_path)
+        curves_dir = Path("reports")
+        loss_curve_path, acc_curve_path = save_training_curves_png(history, curves_dir)
+        mlflow.log_artifact(str(loss_curve_path))
+        mlflow.log_artifact(str(acc_curve_path))
 
         # 4) Load best model for test evaluation
         best_payload = torch.load(str(model_path), map_location=device)
@@ -342,23 +401,105 @@ def train(args: argparse.Namespace) -> None:
         model.eval()
 
         test_loss, test_acc, y_true, y_pred = evaluate_full(model, test_loader, device)
-
         mlflow.log_metric("best_val_accuracy", best_val_acc)
         mlflow.log_metric("test_loss", test_loss)
         mlflow.log_metric("test_accuracy", test_acc)
-
-        # Confusion matrix artifact
+        # ✅ NEW: Precision / Recall / F1 + CM counts
+        metrics, cm, report_text = compute_classification_metrics(y_true, y_pred, class_names)
+        for k, v in metrics.items():
+            mlflow.log_metric(k, float(v))
+        # Confusion matrix image artifact (you already had this)
         cm_path = Path("reports") / "confusion_matrix_test.png"
         save_confusion_matrix_png(y_true, y_pred, class_names, cm_path)
         mlflow.log_artifact(str(cm_path))
-
+        # ✅ NEW: Classification report text artifact
+        report_path = Path("reports") / "classification_report_test.txt"
+        save_text(report_path, report_text)
+        mlflow.log_artifact(str(report_path))
         # Log model artifact
         mlflow.log_artifact(str(model_path))
 
         print(f"\nSaved best model to: {model_path}")
         print(f"Classes: {class_names} | Best val acc: {best_val_acc:.4f} | Test acc: {test_acc:.4f}")
 
+def compute_classification_metrics(
+    y_true: List[int],
+    y_pred: List[int],
+    class_names: List[str],
+):
+    """
+    Compute Precision/Recall/F1 (macro + per-class) + confusion matrix counts.
+    No sklearn required.
+    Returns:
+      metrics: Dict[str, float]
+      cm: 2x2 list
+      report_text: str
+    """
+    n_classes = len(class_names)
 
+    # Confusion matrix
+    cm = [[0 for _ in range(n_classes)] for _ in range(n_classes)]
+    for t, p in zip(y_true, y_pred):
+        cm[t][p] += 1
+
+    precisions = []
+    recalls = []
+    f1s = []
+    metrics = {}
+
+    for i, name in enumerate(class_names):
+        tp = cm[i][i]
+        fp = sum(cm[r][i] for r in range(n_classes) if r != i)
+        fn = sum(cm[i][c] for c in range(n_classes) if c != i)
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+        metrics[f"test_precision_{name}"] = float(precision)
+        metrics[f"test_recall_{name}"] = float(recall)
+        metrics[f"test_f1_{name}"] = float(f1)
+
+        precisions.append(precision)
+        recalls.append(recall)
+        f1s.append(f1)
+
+    # Macro averages
+    metrics["test_precision_macro"] = float(sum(precisions) / max(n_classes, 1))
+    metrics["test_recall_macro"] = float(sum(recalls) / max(n_classes, 1))
+    metrics["test_f1_macro"] = float(sum(f1s) / max(n_classes, 1))
+
+    # Log confusion matrix counts (useful evidence)
+    metrics[f"cm_true_{class_names[0]}_pred_{class_names[0]}"] = float(cm[0][0])
+    metrics[f"cm_true_{class_names[0]}_pred_{class_names[1]}"] = float(cm[0][1])
+    metrics[f"cm_true_{class_names[1]}_pred_{class_names[0]}"] = float(cm[1][0])
+    metrics[f"cm_true_{class_names[1]}_pred_{class_names[1]}"] = float(cm[1][1])
+
+    # Create a nice readable report (artifact)
+    report = []
+    report.append("Classification Report (Test)")
+    report.append("=" * 30)
+    report.append(f"Macro Precision: {metrics['test_precision_macro']:.4f}")
+    report.append(f"Macro Recall:    {metrics['test_recall_macro']:.4f}")
+    report.append(f"Macro F1:        {metrics['test_f1_macro']:.4f}")
+    report.append("")
+    for name in class_names:
+        report.append(f"{name}:")
+        report.append(f"  Precision: {metrics[f'test_precision_{name}']:.4f}")
+        report.append(f"  Recall:    {metrics[f'test_recall_{name}']:.4f}")
+        report.append(f"  F1:        {metrics[f'test_f1_{name}']:.4f}")
+        report.append("")
+    report.append("Confusion Matrix (rows=true, cols=pred)")
+    report.append(f"{class_names[0]}: {cm[0]}")
+    report.append(f"{class_names[1]}: {cm[1]}")
+
+    report_text = "\n".join(report)
+    return metrics, cm, report_text
+
+
+def save_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Train Cats vs Dogs classifier with raw->split folders + MLflow logging")
     p.add_argument("--data_dir", default="data/raw", help="Raw dataset root: data/raw/Cat and data/raw/Dog")
