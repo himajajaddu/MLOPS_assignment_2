@@ -6,7 +6,7 @@ import time
 import logging
 import os
 
-from app.model import load_model, pick_device, predict_image
+from app.model import load_model, pick_device, build_preprocess, predict_image
 
 app = FastAPI(title="Cats vs Dogs Inference Service")
 
@@ -16,25 +16,37 @@ logger = logging.getLogger(__name__)
 Instrumentator().instrument(app).expose(app)
 
 MODEL_PATH = os.getenv("MODEL_PATH", "models/cats_dogs_model.pt")
-DEVICE_STR = os.getenv("DEVICE", "")  # cpu / mps / cuda / empty(auto)
+DEVICE = pick_device(os.getenv("DEVICE", "cpu"))
 
-# Globals used by endpoints
-model = None
-meta = None
-device = None
+_model = None
+_preprocess = None
+_class_names = None
+_device = None
 
 
 @app.on_event("startup")
 def startup():
-    global model, meta, device
+    global _model, _preprocess, _class_names, _device, MODEL_PATH, DEVICE
+
+    _device = DEVICE
     try:
-        device = pick_device(DEVICE_STR)
-        logger.info(f"Loading model from: {os.path.abspath(MODEL_PATH)} on device={device}")
-        model, meta = load_model(MODEL_PATH, device)
-        logger.info(f"Model loaded ✅ classes={meta.get('class_names')} img_size={meta.get('img_size')}")
+        model, meta = load_model(MODEL_PATH, _device)
+
+        # meta should contain class_names and img_size
+        _model = model
+        _class_names = meta.get("class_names", ["Cat", "Dog"])
+        img_size = int(meta.get("img_size", 224))
+
+        _preprocess = build_preprocess(img_size)
+
+        logger.info(
+            f"✅ Model loaded at startup. path={MODEL_PATH} device={_device} classes={_class_names} img_size={img_size}"
+        )
     except Exception as e:
-        logger.exception(f"Model not loaded at startup: {e}")
-        model, meta, device = None, None, None
+        _model = None
+        _preprocess = None
+        _class_names = None
+        logger.warning(f"Model not loaded at startup: {e}")
 
 
 @app.get("/health")
@@ -42,9 +54,9 @@ def health_check():
     return {
         "status": "healthy",
         "service": "cats-vs-dogs-classifier",
-        "model_loaded": model is not None,
-        "model_path": os.path.abspath(MODEL_PATH),
-        "device": str(device) if device else None,
+        "model_loaded": _model is not None,
+        "model_path": MODEL_PATH,
+        "device": str(_device) if _device is not None else None,
     }
 
 
@@ -53,11 +65,10 @@ async def predict(file: UploadFile = File(...)):
     start_time = time.time()
     logger.info(f"Received prediction request for file: {file.filename}")
 
-    if model is None or meta is None or device is None:
+    if _model is None or _preprocess is None or _class_names is None:
         raise HTTPException(
             status_code=503,
-            detail=f"Model not loaded. Train and place model at '{os.path.abspath(MODEL_PATH)}' "
-                   f"(or set MODEL_PATH env var), then restart service."
+            detail=f"Model not loaded. Train and place model at '{MODEL_PATH}' (or set MODEL_PATH env var), then restart service."
         )
 
     try:
@@ -66,14 +77,18 @@ async def predict(file: UploadFile = File(...)):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid image file. Please upload a valid JPG/PNG image.")
 
-    result = predict_image(model, meta, image, device)
+    out = predict_image(_model, {"class_names": _class_names, "img_size": 224}, image, device=_device)
+    pred = out["predicted_class"]
+    probs = out["probabilities"]
+    prob = max(probs.values())
 
     latency = time.time() - start_time
-    logger.info(f"Prediction: {result['predicted_class']} - Latency: {latency:.4f}s")
+    logger.info(f"Prediction: {pred} ({prob:.4f}) - Latency: {latency:.4f}s")
 
     return {
         "filename": file.filename,
-        "prediction": result["predicted_class"],
-        "class_probabilities": {k: float(f"{v:.4f}") for k, v in result["probabilities"].items()},
-        "latency_seconds": float(f"{latency:.4f}"),
+        "prediction": pred,
+        "probability": float(f"{prob:.4f}"),
+        "class_probabilities": {k: float(f"{v:.4f}") for k, v in probs.items()},
+        "latency_seconds": float(f"{latency:.4f}")
     }
