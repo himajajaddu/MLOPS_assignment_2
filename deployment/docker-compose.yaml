@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  api:
+    build: ..
+    container_name: cats-dogs-api
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_PATH=models/cats_dogs_model.pt
+      - DEVICE=cpu
+    volumes:
+      # Mount trained model from host so you don't have to rebuild the image after training
+      - ../models:/app/models:ro

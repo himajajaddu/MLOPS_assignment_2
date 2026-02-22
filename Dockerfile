@@ -5,7 +5,8 @@ WORKDIR /app
 
 # Install dependencies with version pinning via requirements.txt
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --upgrade pip && \
+    pip install --no-cache-dir --default-timeout=600 --retries 10 -r requirements.txt
 
 # Copy source code into container
 COPY . .

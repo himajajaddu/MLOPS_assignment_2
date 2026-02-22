@@ -1,126 +1,177 @@
-# MLOps Assignment 2: End-to-End MLOps Pipeline Guide
+# MLOps Assignment 2: End-to-End MLOps Pipeline (Cats vs Dogs)
 
-This folder contains all the necessary boilerplate scripts, configuration files, and workflows required to complete your MLOps assignment for the Cats vs Dogs binary classification. 
+This project implements an end-to-end MLOps workflow for **Cats vs Dogs** image classification:
 
-Below are the step-by-step instructions to fulfill **all** the assignment tasks.
-
----
-
-## M1: Model Development & Experiment Tracking
-
-### 1. Data & Code Versioning
-1. **Initialize Git:**
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit of MLOps assignment boilerplate"
-   ```
-2. **Initialize DVC for dataset versioning:**
-   ```bash
-   dvc init
-   mkdir -p data/raw
-   # Download Cats vs Dogs dataset from Kaggle and place it in data/raw/
-   # Track the data with DVC
-   dvc add data/raw
-   git add data/raw.dvc .gitignore
-   git commit -m "Add raw dataset via DVC"
-   ```
-
-### 2. Model Building & Experiment Tracking
-The baseline CNN model and MLflow experiment tracking are pre-configured in `src/train.py`.
-1. **Install requirements:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. **Run training:**
-   ```bash
-   python src/train.py
-   ```
-   *This script simulates training, logs metrics (loss, accuracy) and parameters to MLflow, and saves `cats_dogs_model.pt` in the `models/` folder.*
-3. **View MLflow UI:**
-   ```bash
-   mlflow ui --backend-store-uri sqlite:///mlflow.db
-   ```
-   *Open your browser to http://127.0.0.1:5000 to see your tracked experiments.*
+- **M1**: Real model training + MLflow experiment tracking
+- **M2**: FastAPI inference service (loads the trained model and predicts from an uploaded image)
+- **M3**: Automated tests with Pytest
+- **M4**: Containerization + Docker Compose deployment
+- **M5**: Basic monitoring (Prometheus metrics) + logging
 
 ---
 
-## M2: Model Packaging & Containerization
+## Folder Structure (important)
 
-### 1. Inference Service
-The FastAPI app is already created at `app/main.py` with two endpoints (`/health` and `/predict`).
-
-### 2. Run Locally & Verify
-1. **Start the FastAPI service locally:**
-   ```bash
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-   ```
-2. **Test via Curl/Postman:**
-   ```bash
-   # Health check
-   curl http://localhost:8000/health
-   
-   # Predict
-   curl -X POST -F "file=@data/test_cat.jpg" http://localhost:8000/predict
-   ```
-
-### 3. Containerization
-1. **Build the Docker Image:**
-   ```bash
-   docker build -t cats-dogs-classifier:latest .
-   ```
-2. **Run the container:**
-   ```bash
-   docker run -p 8000:8000 cats-dogs-classifier:latest
-   ```
+- `data/raw/` → raw Kaggle download/extract (DO NOT commit large files)
+- `data/processed/` → ImageFolder structured dataset (optional helper script)
+- `models/` → trained model artifact saved as `cats_dogs_model.pt`
+- `src/train.py` → real training script
+- `app/main.py` → FastAPI inference service (uses the trained model)
 
 ---
 
-## M3: CI Pipeline for Build, Test & Image Creation
+## M1: Data + Training + MLflow
 
-1. **Automated Testing:** Pytest unit tests for the endpoints are in `app/tests/test_api.py`.
-   ```bash
-   pytest app/tests/
-   ```
-2. **GitHub Actions CI Setup:** 
-   The pipeline is defined in `.github/workflows/ci.yml`. It automatically checks out code, installs dependencies, runs pytest, and builds the Docker image on every push to the `main` branch.
-3. **Publishing Artifacts:**
-   Update your GitHub Repository Secrets (`DOCKER_USERNAME` and `DOCKER_PASSWORD`) and uncomment the Docker Push steps in the `ci.yml` file to push images to Docker Hub.
+### 1) Put Kaggle dataset in `data/raw/`
 
----
+Use **any** Kaggle Cats vs Dogs dataset, but the code supports these common layouts:
 
-## M4: CD Pipeline & Deployment
+**Layout A (already ImageFolder style)**:
+```
+data/raw/train/cats/*.jpg
+data/raw/train/dogs/*.jpg
+```
 
-1. **Docker Compose Target:** 
-   We chose Docker Compose as the deployment target. The configuration is at `deployment/docker-compose.yml`.
-   ```bash
-   cd deployment
-   docker-compose up -d
-   ```
-2. **Smoke Tests:**
-   A smoke test script (`deployment/smoke_test.py`) has been provided. This script calls the health check and prediction endpoints. If either fails, the script exits with an error code, which can be configured to fail a CI/CD pipeline.
-   ```bash
-   python deployment/smoke_test.py
-   ```
+**Layout B (Kaggle Dogs vs Cats competition)**:
+```
+data/raw/train/cat.0.jpg, dog.0.jpg, ...
+data/raw/test/...
+```
 
----
-
-## M5: Monitoring, Logs & Final Submission
-
-1. **Monitoring & Logging:**
-   - Standard Python logging has been implemented in `app/main.py`.
-   - **Prometheus** metrics are exposed automatically via `prometheus-fastapi-instrumentator`. You can access the metrics at `http://localhost:8000/metrics`.
-
-2. **Final Submission Preparation:**
-   - Ensure all code is pushed to your Git repository.
-   - Record a 5-minute screen recording showcasing:
-     1. Making a code change.
-     2. Running `git push` which triggers GitHub Actions.
-     3. Showing the completed GitHub Actions pipeline.
-     4. Sending a sample prediction request to your running deployed container.
-   - Zip this entire folder (excluding virtual environments and large datasets) to submit to your assignment portal.
+If your dataset is Layout B, run the converter:
 
 ```bash
-# Example zip command excluding large folders
-zip -r mlops_assignment_submission.zip mlops_assignment/ -x "*/__pycache__/*" -x "*/data/raw/*"
+python -m src.prepare_data --raw_dir data/raw --out_dir data/processed --subset 2500
+```
+
+Then you will train from `data/processed/`.
+
+> Tip: start with `--subset 2500` for faster training, then increase later.
+
+### 2) Track data with DVC (optional but recommended)
+
+```bash
+dvc init
+dvc add data/raw
+git add data/raw.dvc .gitignore
+git commit -m "Track raw data with DVC"
+```
+
+### 3) Install requirements
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4) Train (REAL training)
+
+If your data is in `data/raw/` (Layout A):
+```bash
+python -m src.train --data_dir data/raw --epochs 3 --img_size 128
+```
+
+If you used the converter (Layout B → processed):
+```bash
+python -m src.train --data_dir data/processed --epochs 3 --img_size 128
+```
+
+This will:
+- train a small CNN
+- log params/metrics to **MLflow**
+- save the best model to: `models/cats_dogs_model.pt`
+
+### 5) View MLflow UI
+
+```bash
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
+Open: http://127.0.0.1:5000
+
+---
+
+## M2: FastAPI Inference (uses trained model)
+
+### 1) Run locally
+
+Train first, then:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Health check:
+```bash
+curl http://localhost:8000/health
+```
+
+Predict (upload any jpg/png):
+```bash
+curl -X POST -F "file=@path/to/sample.jpg" http://localhost:8000/predict
+```
+
+### 2) Model path via environment variable (optional)
+
+By default, API loads:
+- `models/cats_dogs_model.pt`
+
+Override:
+```bash
+MODEL_PATH=models/cats_dogs_model.pt DEVICE=cpu uvicorn app.main:app --reload
+```
+
+---
+
+## M2: Docker build/run
+
+Build:
+```bash
+docker build -t cats-dogs-classifier:latest .
+```
+
+Run:
+```bash
+docker run -p 8000:8000 -e MODEL_PATH=models/cats_dogs_model.pt cats-dogs-classifier:latest
+```
+
+> NOTE: Your trained model must be inside the image. The simplest approach is: train first, then build the image (so `models/` is included).
+
+---
+
+## M3: Tests
+
+```bash
+pytest app/tests/
+```
+
+Tests are designed to pass even if the model is not trained yet (the API returns 503 until model exists).
+
+---
+
+## M4: Deployment (Docker Compose)
+
+```bash
+cd deployment
+docker-compose up -d
+```
+
+---
+
+## M5: Monitoring
+
+Prometheus metrics:
+- http://localhost:8000/metrics
+
+Logs:
+- standard Python logging in `app/main.py`
+
+---
+
+## Submission Tip
+
+Zip the project **without large data**:
+
+```bash
+zip -r mlops_assignment_submission.zip MLOPS_assignment_2/ \
+  -x "*/__pycache__/*" -x "*/data/raw/*" -x "*/data/processed/*"
 ```
