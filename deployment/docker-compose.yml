@@ -7,4 +7,4 @@ services:
       - MODEL_PATH=/app/models/cats_dogs_model.pt
       - DEVICE=cpu
     volumes:
-      - ${MODEL_DIR}:/app/models
+      - ${MODEL_DIR:-../models}:/app/models

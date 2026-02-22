@@ -80,8 +80,9 @@ jobs:
 
       - name: Start service with docker compose (mount model folder)
         run: |
-          export MODEL_DIR="${GITHUB_WORKSPACE}/models"
-          echo "MODEL_DIR=$MODEL_DIR"
+          echo "MODEL_DIR=${GITHUB_WORKSPACE}/models" > deployment/.env
+          echo "Wrote deployment/.env:"
+          cat deployment/.env
           cd deployment
           docker compose up -d
           docker compose ps
